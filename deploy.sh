@@ -61,11 +61,14 @@ print_success() {
 check_root() {
     if [[ $EUID -eq 0 ]]; then
         print_warning "Running as root. This is not recommended for security reasons."
-        read -p "Continue anyway? [y/N]: " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            exit 1
-        fi
+        while true; do
+            read -p "Continue anyway? [y/N] " yn
+            case $yn in
+                [Yy]* ) break;;
+                [Nn]* | "" ) exit 1;;
+                * ) echo "Please answer y or n.";;
+            esac
+        done
     fi
 }
 

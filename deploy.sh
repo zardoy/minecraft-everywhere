@@ -107,33 +107,24 @@ check_system() {
 
 # Interactive menu selection
 show_menu() {
-    echo -e "${CYAN}┌─────────────────────────────────────────────┐${NC}"
-    echo -e "${CYAN}│${NC}             ${WHITE}Choose Deployment Type${NC}             ${CYAN}│${NC}"
-    echo -e "${CYAN}├─────────────────────────────────────────────┤${NC}"
-    echo -e "${CYAN}│${NC} ${GREEN}1)${NC} Minecraft Web Client                    ${CYAN}│${NC}"
-    echo -e "${CYAN}│${NC} ${YELLOW}2)${NC} Minecraft Websocket Proxy (coming soon) ${CYAN}│${NC}"
-    echo -e "${CYAN}│${NC} ${YELLOW}3)${NC} Pixel Client 1.12.2 (coming soon)      ${CYAN}│${NC}"
-    echo -e "${CYAN}└─────────────────────────────────────────────┘${NC}"
+    echo -e "${WHITE}Choose Deployment Type:${NC}"
+    echo -e " ${GREEN}1)${NC} Minecraft Web Client"
+    echo -e " ${YELLOW}2)${NC} Minecraft Websocket Proxy (coming soon)"
+    echo -e " ${YELLOW}3)${NC} Pixel Client 1.12.2 (coming soon)"
     echo ""
 }
 
 show_deployment_menu() {
-    echo -e "${CYAN}┌─────────────────────────────────────────────┐${NC}"
-    echo -e "${CYAN}│${NC}           ${WHITE}How to deploy?${NC}                      ${CYAN}│${NC}"
-    echo -e "${CYAN}├─────────────────────────────────────────────┤${NC}"
-    echo -e "${CYAN}│${NC} ${GREEN}1)${NC} Deploy Outside Docker                   ${CYAN}│${NC}"
-    echo -e "${CYAN}│${NC} ${YELLOW}2)${NC} Deploy using Docker (coming soon)       ${CYAN}│${NC}"
-    echo -e "${CYAN}└─────────────────────────────────────────────┘${NC}"
+    echo -e "${WHITE}How to deploy?${NC}"
+    echo -e " ${GREEN}1)${NC} Deploy Outside Docker"
+    echo -e " ${YELLOW}2)${NC} Deploy using Docker (coming soon)"
     echo ""
 }
 
 show_hosting_menu() {
-    echo -e "${CYAN}┌─────────────────────────────────────────────┐${NC}"
-    echo -e "${CYAN}│${NC}          ${WHITE}What to provide?${NC}                     ${CYAN}│${NC}"
-    echo -e "${CYAN}├─────────────────────────────────────────────┤${NC}"
-    echo -e "${CYAN}│${NC} ${GREEN}1)${NC} Only static files (Apache/Nginx)        ${CYAN}│${NC}"
-    echo -e "${CYAN}│${NC} ${GREEN}2)${NC} Node.js proxy server hosting (with PM2) ${CYAN}│${NC}"
-    echo -e "${CYAN}└─────────────────────────────────────────────┘${NC}"
+    echo -e "${WHITE}What to provide?${NC}"
+    echo -e " ${GREEN}1)${NC} Only static files (Apache/Nginx)"
+    echo -e " ${GREEN}2)${NC} Node.js proxy server hosting (with PM2)"
     echo ""
 }
 
@@ -257,6 +248,14 @@ deploy_nodejs() {
 setup_auto_update() {
     print_step "Setting up automatic updates..."
 
+    # Create version directory for both deployment types
+    if [[ "$DEPLOYMENT_TYPE" == "static" ]]; then
+        VERSION_DIR="/var/lib/minecraft-web-client"
+        sudo mkdir -p "$VERSION_DIR"
+    else
+        VERSION_DIR="$INSTALL_DIR"
+    fi
+
     # Create update script
     UPDATE_SCRIPT="/usr/local/bin/mwc-update.sh"
     sudo tee "$UPDATE_SCRIPT" > /dev/null << EOF
@@ -268,10 +267,11 @@ INSTALL_DIR="$INSTALL_DIR"
 STATIC_DIR="$STATIC_DIR"
 SERVICE_NAME="$SERVICE_NAME"
 DEPLOYMENT_TYPE="$DEPLOYMENT_TYPE"
+VERSION_DIR="$VERSION_DIR"
 
 # Get current and latest versions
-if [[ -f "\$INSTALL_DIR/version" ]]; then
-    CURRENT_VERSION=\$(cat "\$INSTALL_DIR/version")
+if [[ -f "\$VERSION_DIR/version" ]]; then
+    CURRENT_VERSION=\$(cat "\$VERSION_DIR/version")
 else
     CURRENT_VERSION="unknown"
 fi
@@ -304,7 +304,7 @@ if [[ "\$CURRENT_VERSION" != "\$LATEST_VERSION" ]]; then
     fi
 
     # Update version file
-    echo "\$LATEST_VERSION" | sudo tee "\$INSTALL_DIR/version" > /dev/null
+    echo "\$LATEST_VERSION" | sudo tee "\$VERSION_DIR/version" > /dev/null
 
     echo "Update completed successfully"
     rm -rf "\$TEMP_DIR"
@@ -316,7 +316,7 @@ EOF
     sudo chmod +x "$UPDATE_SCRIPT"
 
     # Save current version
-    echo "$LATEST_VERSION" | sudo tee "$INSTALL_DIR/version" > /dev/null
+    echo "$LATEST_VERSION" | sudo tee "$VERSION_DIR/version" > /dev/null
 
     # Setup cron job
     CRON_JOB="0 2 * * * $UPDATE_SCRIPT >> /var/log/mwc-update.log 2>&1"

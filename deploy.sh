@@ -314,27 +314,27 @@ EOF
 
 # Check and configure Apache
 configure_apache() {
-    print_step "Configuring Apache web server..."
-
-    # Check if Apache is installed
-    if ! command -v apache2 &> /dev/null; then
-        print_warning "Apache not found. Installing..."
-        sudo apt-get update
-        sudo apt-get install -y apache2
-    fi
-
-    # Enable required modules
-    sudo a2enmod proxy
-    sudo a2enmod proxy_http
-    sudo a2enmod proxy_wstunnel
-    sudo a2enmod rewrite
-    sudo a2enmod ssl
-
     # Ask for domain configuration
     echo
     read -p "Enter domain name to configure Apache (leave empty to skip): " DOMAIN_NAME
 
     if [[ -n "$DOMAIN_NAME" ]]; then
+        print_step "Configuring Apache web server..."
+
+        # Check if Apache is installed
+        if ! command -v apache2 &> /dev/null; then
+            print_warning "Apache not found. Installing..."
+            sudo apt-get update
+            sudo apt-get install -y apache2
+        fi
+
+        # Enable required modules
+        sudo a2enmod proxy
+        sudo a2enmod proxy_http
+        sudo a2enmod proxy_wstunnel
+        sudo a2enmod rewrite
+        sudo a2enmod ssl
+
         # Create Apache configuration file
         APACHE_CONF="/etc/apache2/sites-available/${DOMAIN_NAME}.conf"
 

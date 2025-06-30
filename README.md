@@ -30,20 +30,19 @@ chmod +x deploy.sh
 
 ## 🛠️ Deployment Options
 
-### Option 1: Static Files Only
+### Option 1: Node.js Proxy Server (recommended)
+Full-featured deployment with server-side capabilities.
+- ✅ Automatic service startup
+- ✅ Built-in web server for the client
+- ✅ Built-in proxy for connecting to Java servers through this deployment
+
+### Option 2: Static Files Only
 Perfect for hosting with Apache, Nginx, or any static file server.
 - ✅ No server-side processing required
 - ✅ Minimal resource usage
 - ✅ Easy to maintain
 
-### Option 2: Node.js Proxy Server
-Full-featured deployment with server-side capabilities.
-- ✅ Enhanced features and performance
-- ✅ PM2 process management
-- ✅ Automatic service startup
-- ✅ Background updates
-
-## 📋 Requirements
+## 📋 Requirements (for manual installation)
 
 ### For Static Deployment
 - Web server (Apache, Nginx, etc.)
@@ -76,7 +75,6 @@ If you prefer manual setup:
 
 4. **For Node.js hosting:**
    ```bash
-   npm install
    pm2 start server.js --name mwc-server
    pm2 startup
    pm2 save

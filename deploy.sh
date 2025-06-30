@@ -123,8 +123,8 @@ show_deployment_menu() {
 
 show_hosting_menu() {
     echo -e "${WHITE}What to provide?${NC}"
-    echo -e " ${GREEN}1)${NC} Only static files (Apache/Nginx)"
-    echo -e " ${GREEN}2)${NC} Node.js proxy server hosting (with PM2)"
+    echo -e " ${GREEN}1)${NC} Node.js proxy server hosting (with PM2)"
+    echo -e " ${GREEN}2)${NC} Only static files (Apache/Nginx)"
     echo ""
 }
 
@@ -292,7 +292,23 @@ if [[ "\$CURRENT_VERSION" != "\$LATEST_VERSION" ]]; then
 
     # Update files based on deployment type
     if [[ "\$DEPLOYMENT_TYPE" == "static" ]]; then
+        # Backup config and custom files
+        if [ -f "\$STATIC_DIR/config.json" ]; then
+            cp "\$STATIC_DIR/config.json" "\$TEMP_DIR/"
+        fi
+        # Backup all custom* files
+        find "\$STATIC_DIR" -name "custom*" -exec cp {} "\$TEMP_DIR/" \;
+
+        # Update files
         sudo cp -r dist/* "\$STATIC_DIR/"
+
+        # Restore config and custom files
+        if [ -f "\$TEMP_DIR/config.json" ]; then
+            sudo cp "\$TEMP_DIR/config.json" "\$STATIC_DIR/"
+        fi
+        # Restore all custom* files
+        find "\$TEMP_DIR" -name "custom*" -exec sudo cp {} "\$STATIC_DIR/" \;
+
         sudo chown -R www-data:www-data "\$STATIC_DIR" 2>/dev/null || true
     else
         sudo cp -r dist/* "\$INSTALL_DIR/dist/"
@@ -401,10 +417,10 @@ EOF
         sudo a2ensite "${DOMAIN_NAME}.conf"
         sudo a2dissite 000-default.conf
 
-        # Setup SSL with Certbot
+                # Setup SSL with Certbot
         echo
-        read -p "Would you like to setup SSL with Let's Encrypt? [Y/n]: " setup_ssl
-        setup_ssl=${setup_ssl:-Y}
+        read -p "Would you like to setup SSL with Let's Encrypt? (skip if using Cloudflare) [y/N]: " setup_ssl
+        setup_ssl=${setup_ssl:-N}
 
         if [[ $setup_ssl =~ ^[Yy]$ ]]; then
             # Check if certbot is installed
@@ -500,13 +516,13 @@ main() {
         hosting_choice=${hosting_choice:-1}
         case $hosting_choice in
             1)
-                DEPLOYMENT_TYPE="static"
-                print_success "Selected: Static files hosting"
+                DEPLOYMENT_TYPE="nodejs"
+                print_success "Selected: Node.js proxy server hosting"
                 break
                 ;;
             2)
-                DEPLOYMENT_TYPE="nodejs"
-                print_success "Selected: Node.js proxy server hosting"
+                DEPLOYMENT_TYPE="static"
+                print_success "Selected: Static files hosting"
                 break
                 ;;
             *)

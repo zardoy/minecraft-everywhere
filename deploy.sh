@@ -215,12 +215,41 @@ check_pm2() {
     print_success "PM2 is installed."
 }
 
+# Find first available port starting from given port
+find_available_port() {
+    local port=$1
+    while netstat -tna | grep -q ":${port}.*LISTEN"; do
+        port=$((port + 1))
+    done
+    echo $port
+}
+
 # Deploy Node.js server
 deploy_nodejs() {
     print_step "Deploying Node.js server..."
 
     check_nodejs
     check_pm2
+
+    # Find available port, starting from 8080
+    DEFAULT_PORT=$(find_available_port 8080)
+    echo
+    read -p "Enter port number for Node.js server [$DEFAULT_PORT]: " PORT
+    PORT=${PORT:-$DEFAULT_PORT}
+
+    # Validate port number
+    if ! [[ "$PORT" =~ ^[0-9]+$ ]] || [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
+        print_error "Invalid port number. Using default port $DEFAULT_PORT"
+        PORT=$DEFAULT_PORT
+    fi
+
+    # Check if chosen port is available
+    if [ "$PORT" != "$DEFAULT_PORT" ] && netstat -tna | grep -q ":${PORT}.*LISTEN"; then
+        print_warning "Port $PORT is already in use. Using next available port."
+        PORT=$(find_available_port $PORT)
+    fi
+
+    print_info "Using port: $PORT"
 
     sudo mkdir -p "$INSTALL_DIR"
     sudo cp -r * "$INSTALL_DIR/"
@@ -234,14 +263,15 @@ deploy_nodejs() {
     # Stop existing service if running
     pm2 delete "$SERVICE_NAME" 2>/dev/null || true
 
-    # Start the service
-    pm2 start server.js --name "$SERVICE_NAME"
+    # Start the service with specified port
+    pm2 start server.js --name "$SERVICE_NAME" -- --port $PORT
     pm2 startup
     pm2 save
 
     print_success "Node.js server deployed and started with PM2."
     print_info "Service name: $SERVICE_NAME"
     print_info "Installation directory: $INSTALL_DIR"
+    print_info "Server is running on: http://localhost:$PORT"
 }
 
 # Setup automatic updates
@@ -398,13 +428,13 @@ EOF
     ProxyPreserveHost On
 
     # Main application proxy rules
-    ProxyPass / http://localhost:8080/
-    ProxyPassReverse / http://localhost:8080/
+    ProxyPass / http://localhost:${PORT}/
+    ProxyPassReverse / http://localhost:${PORT}/
 
     RewriteEngine On
     RewriteCond %{HTTP:Upgrade} websocket [NC]
     RewriteCond %{HTTP:Connection} upgrade [NC]
-    RewriteRule ^/?(.*) "ws://localhost:8080/\$1" [P,L]
+    RewriteRule ^/?(.*) "ws://localhost:${PORT}/\$1" [P,L]
 
     # Log files
     ErrorLog \${APACHE_LOG_DIR}/${DOMAIN_NAME}_error.log
@@ -444,7 +474,7 @@ EOF
         if [[ "$DEPLOYMENT_TYPE" == "static" ]]; then
             print_info "Static files will be served from ${STATIC_DIR}"
         else
-            print_info "Requests will be proxied to Node.js server on port 8080"
+            print_info "Requests will be proxied to Node.js server on port ${PORT}"
         fi
     else
         print_info "Skipping Apache domain configuration"
@@ -571,7 +601,7 @@ main() {
         print_info "🚀 Node.js server is running with PM2"
         print_info "📊 Check status with: pm2 status"
         print_info "📝 View logs with: pm2 logs $SERVICE_NAME"
-        print_info "🔗 The server is running on: http://localhost:8080"
+        print_info "🔗 The server is running on: http://localhost:$PORT"
     fi
 
     if [[ "$ENABLE_AUTO_UPDATE" == true ]]; then

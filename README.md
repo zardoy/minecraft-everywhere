@@ -7,10 +7,17 @@
 
 ## 🚀 Quick Start
 
-Deploy your own Minecraft Web Client in seconds with our one-liner script:
+Deploy your own Minecraft Web Client in seconds with our interactive script:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/zardoy/minecraft-everywhere/main/deploy.sh | bash
+curl -O https://raw.githubusercontent.com/zardoy/minecraft-everywhere/main/deploy.sh
+chmod +x deploy.sh
+```
+
+Then run it:
+
+```bash
+./deploy.sh
 ```
 
 ## ✨ Features

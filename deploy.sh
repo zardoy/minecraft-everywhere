@@ -72,6 +72,18 @@ check_root() {
     fi
 }
 
+# Check if running interactively
+check_interactive() {
+    if [[ ! -t 0 ]]; then
+        print_error "This script must be run interactively."
+        print_info "Please download and run the script directly:"
+        print_info "  curl -O https://raw.githubusercontent.com/zardoy/minecraft-everywhere/main/deploy.sh"
+        print_info "  chmod +x deploy.sh"
+        print_info "  ./deploy.sh"
+        exit 1
+    fi
+}
+
 # Check system requirements
 check_system() {
     print_step "Checking system requirements..."
@@ -435,6 +447,7 @@ main() {
     trap cleanup EXIT
 
     print_header
+    check_interactive
     check_root
     check_system
 

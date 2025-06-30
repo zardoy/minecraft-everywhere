@@ -12,11 +12,6 @@ Deploy your own Minecraft Web Client in seconds with our interactive script:
 ```bash
 curl -O https://raw.githubusercontent.com/zardoy/minecraft-everywhere/main/deploy.sh
 chmod +x deploy.sh
-```
-
-Then run it:
-
-```bash
 ./deploy.sh
 ```
 
@@ -94,6 +89,62 @@ When enabled, the system will:
 - ✅ Download and apply updates automatically
 - ✅ Restart server only when required
 - ✅ Maintain service availability
+
+## 🗑️ Uninstallation
+
+To remove Minecraft Web Client from your server:
+
+### For Static Deployment
+```bash
+# Remove static files
+sudo rm -rf /var/www/html/minecraft
+
+# Remove version tracking and update script
+sudo rm -rf /var/lib/minecraft-web-client
+sudo rm /usr/local/bin/mwc-update.sh
+
+# Remove cron job
+(crontab -l | grep -v mwc-update) | crontab -
+
+# If using Apache, remove site configuration
+sudo a2dissite minecraft*.conf
+sudo rm /etc/apache2/sites-available/minecraft*.conf
+sudo systemctl reload apache2
+
+# If SSL was configured, you may want to remove the certificate
+sudo certbot delete --cert-name your-domain.com
+```
+
+### For Node.js Deployment
+```bash
+# Stop and remove PM2 service
+pm2 stop mwc-server
+pm2 delete mwc-server
+pm2 save
+
+# Remove installation directory
+sudo rm -rf /opt/minecraft-web-client
+
+# Remove update script
+sudo rm /usr/local/bin/mwc-update.sh
+
+# Remove cron job
+(crontab -l | grep -v mwc-update) | crontab -
+
+# If using Apache, remove site configuration
+sudo a2dissite minecraft*.conf
+sudo rm /etc/apache2/sites-available/minecraft*.conf
+sudo systemctl reload apache2
+
+# If SSL was configured, you may want to remove the certificate
+sudo certbot delete --cert-name your-domain.com
+
+# Optionally, if you don't need Node.js and PM2 anymore
+sudo npm uninstall -g pm2
+# Note: Don't remove Node.js if other applications depend on it
+```
+
+Replace `your-domain.com` with the actual domain name you used during installation.
 
 ## 🏗️ Project Structure
 

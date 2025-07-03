@@ -366,7 +366,16 @@ EOF
 
     # Setup cron job
     CRON_JOB="0 2 * * * $UPDATE_SCRIPT >> /var/log/mwc-update.log 2>&1"
-    (crontab -l 2>/dev/null | grep -v mwc-update; echo "$CRON_JOB") | crontab -
+    # Create a temporary file for the new crontab
+    TEMP_CRONTAB=$(mktemp)
+    # Get existing crontab if any, excluding old update script entries
+    (crontab -l 2>/dev/null || echo "") | grep -v mwc-update > "$TEMP_CRONTAB"
+    # Add new update script entry
+    echo "$CRON_JOB" >> "$TEMP_CRONTAB"
+    # Install new crontab
+    crontab "$TEMP_CRONTAB"
+    # Clean up
+    rm -f "$TEMP_CRONTAB"
 
     print_success "Automatic updates configured."
     print_info "Updates will check daily at 2:00 AM"
@@ -488,9 +497,77 @@ cleanup() {
     fi
 }
 
+# Setup cron job
+setup_cron() {
+    set -x  # Enable debug output
+    print_step "Setting up cron job..."
+
+    CRON_JOB="0 2 * * * /usr/local/bin/mwc-update.sh >> /var/log/mwc-update.log 2>&1"
+    # Create a temporary file for the new crontab
+    TEMP_CRONTAB=$(mktemp)
+    if [ $? -ne 0 ]; then
+        print_error "Failed to create temporary file"
+        return 1
+    fi
+    print_info "Created temp file: $TEMP_CRONTAB"
+
+    # Get existing crontab if any, excluding old update script entries
+    # First save current crontab or empty string if none exists
+    (crontab -l 2>/dev/null || echo "") > "$TEMP_CRONTAB"
+    if [ $? -ne 0 ]; then
+        print_error "Failed to get current crontab"
+        rm -f "$TEMP_CRONTAB"
+        return 1
+    fi
+
+    # Remove any existing update entries
+    if [ -s "$TEMP_CRONTAB" ]; then
+        grep -v "mwc-update" "$TEMP_CRONTAB" > "$TEMP_CRONTAB.tmp" && mv "$TEMP_CRONTAB.tmp" "$TEMP_CRONTAB" || true
+    fi
+    print_info "Current crontab saved (excluding old update entries)"
+
+    # Add new update script entry
+    echo "$CRON_JOB" >> "$TEMP_CRONTAB"
+    if [ $? -ne 0 ]; then
+        print_error "Failed to add new cron job"
+        rm -f "$TEMP_CRONTAB"
+        return 1
+    fi
+    print_info "Added new cron job entry"
+
+    # Show what we're about to install
+    print_info "New crontab contents:"
+    cat "$TEMP_CRONTAB"
+
+    # Install new crontab
+    crontab "$TEMP_CRONTAB"
+    if [ $? -ne 0 ]; then
+        print_error "Failed to install new crontab"
+        rm -f "$TEMP_CRONTAB"
+        return 1
+    fi
+    print_info "Installed new crontab"
+
+    # Clean up
+    rm -f "$TEMP_CRONTAB"
+    set +x  # Disable debug output
+
+    print_success "Cron job setup completed."
+    print_info "Updates will check daily at 2:00 AM"
+    print_info "Update logs: /var/log/mwc-update.log"
+    return 0
+}
+
 # Main deployment flow
 main() {
     trap cleanup EXIT
+
+    # Handle --update-cron flag
+    if [[ "$1" == "--update-cron" ]]; then
+        print_header
+        setup_cron
+        exit $?
+    fi
 
     print_header
     check_interactive

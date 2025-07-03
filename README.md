@@ -15,6 +15,8 @@ chmod +x deploy.sh
 ./deploy.sh
 ```
 
+If you enabled automatic updates, ensure cron is running: `crontab -l`. If not, run `./deploy.sh --update-cron` to setup it again.
+
 ## ✨ Features
 
 ### 🎯 Available Now

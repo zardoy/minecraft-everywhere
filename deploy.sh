@@ -95,12 +95,44 @@ check_system() {
     fi
 
     # Check required tools
-    for tool in curl wget unzip; do
+    for tool in curl wget; do
         if ! command -v $tool &> /dev/null; then
             print_error "$tool is required but not installed."
             exit 1
         fi
     done
+
+    # Check for unzip and auto-install on Ubuntu/Debian
+    if ! command -v unzip &> /dev/null; then
+        print_warning "unzip is not installed. Attempting to install..."
+
+        # Detect package manager and install unzip
+        if command -v apt-get &> /dev/null; then
+            print_info "Installing unzip using apt-get..."
+            sudo apt-get update
+            sudo apt-get install -y unzip
+        elif command -v yum &> /dev/null; then
+            print_info "Installing unzip using yum..."
+            sudo yum install -y unzip
+        elif command -v dnf &> /dev/null; then
+            print_info "Installing unzip using dnf..."
+            sudo dnf install -y unzip
+        elif command -v zypper &> /dev/null; then
+            print_info "Installing unzip using zypper..."
+            sudo zypper install -y unzip
+        else
+            print_error "Could not detect package manager. Please install unzip manually."
+            exit 1
+        fi
+
+        # Verify installation
+        if ! command -v unzip &> /dev/null; then
+            print_error "Failed to install unzip. Please install it manually."
+            exit 1
+        fi
+
+        print_success "unzip installed successfully."
+    fi
 
     print_success "System requirements met."
 }
@@ -490,6 +522,45 @@ EOF
     fi
 }
 
+# Share proxy URL to public listing
+share_proxy() {
+    if [[ "$DEPLOYMENT_TYPE" != "nodejs" ]]; then
+        return 0
+    fi
+
+    echo
+    read -p "Would you like to share your deployed proxy URL in the public listing? [Y/n]: " share_choice
+    share_choice=${share_choice:-Y}
+
+    if [[ $share_choice =~ ^[Yy]$ ]]; then
+        print_step "Sharing proxy URL to public listing..."
+
+        # Get the public URL (domain or localhost with port)
+        if [[ -n "$DOMAIN_NAME" ]]; then
+            PROXY_URL="https://${DOMAIN_NAME}"
+        else
+            PROXY_URL="http://localhost:${PORT}"
+        fi
+
+        # Make request to share the proxy
+        SHARE_RESPONSE=$(curl -s -w "%{http_code}" -X POST "https://proxy.mcraft.fun/share-proxy" \
+            -H "Content-Type: application/json" \
+            -d "{\"url\":\"${PROXY_URL}\"}" 2>/dev/null)
+
+        HTTP_CODE="${SHARE_RESPONSE: -3}"
+
+        if [[ "$HTTP_CODE" == "200" ]]; then
+            print_success "Proxy URL successfully shared to public listing!"
+            print_info "Your proxy is now available at: $PROXY_URL"
+        else
+            print_warning "Failed to share proxy URL (HTTP $HTTP_CODE). This won't affect your deployment."
+            print_info "Your proxy is still available at: $PROXY_URL"
+        fi
+    else
+        print_info "Proxy URL not shared to public listing."
+    fi
+}
+
 # Cleanup
 cleanup() {
     if [[ -n "$TEMP_DIR" && -d "$TEMP_DIR" ]]; then
@@ -689,6 +760,9 @@ main() {
     echo
     # Configure Apache as the last step
     configure_apache
+
+    # Share proxy URL if Node.js deployment
+    share_proxy
 
     echo
     print_success "🎉 Deployment completed successfully! 🎮 Happy Gaming! ⛏️"

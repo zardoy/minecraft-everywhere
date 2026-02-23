@@ -140,16 +140,9 @@ check_system() {
 # Interactive menu selection
 show_menu() {
     echo -e "${WHITE}Choose Deployment Type:${NC}"
-    echo -e " ${GREEN}1)${NC} Minecraft Web Client"
-    echo -e " ${YELLOW}2)${NC} Minecraft Websocket Proxy (coming soon)"
-    echo -e " ${YELLOW}3)${NC} Pixel Client 1.12.2 (coming soon)"
-    echo ""
-}
-
-show_deployment_menu() {
-    echo -e "${WHITE}How to deploy?${NC}"
-    echo -e " ${GREEN}1)${NC} Deploy Outside Docker"
-    echo -e " ${YELLOW}2)${NC} Deploy using Docker (coming soon)"
+    echo -e " ${GREEN}1)${NC} Minecraft Web Client (only proxy using Docker)"
+    echo -e " ${GREEN}2)${NC} Minecraft Web Client + proxy (outside Docker)"
+    echo -e " ${GREEN}3)${NC} Minecraft Websocket Proxy (manual setup with bun)"
     echo ""
 }
 
@@ -158,6 +151,134 @@ show_hosting_menu() {
     echo -e " ${GREEN}1)${NC} Node.js proxy server hosting (with PM2)"
     echo -e " ${GREEN}2)${NC} Only static files (Apache/Nginx)"
     echo ""
+}
+
+# Ensure Docker and Docker Compose (v2) are installed
+ensure_docker_installed() {
+    if command -v docker &> /dev/null && docker compose version &> /dev/null; then
+        print_success "Docker and Docker Compose are already installed."
+        return 0
+    fi
+
+    print_step "Installing Docker and Docker Compose..."
+
+    if command -v apt-get &> /dev/null; then
+        sudo apt-get update
+        sudo apt-get install -y ca-certificates curl
+        sudo install -m 0755 -d /etc/apt/keyrings
+        DISTRO_ID=$(. /etc/os-release 2>/dev/null && echo "${ID:-ubuntu}")
+        DISTRO_CODENAME=$(. /etc/os-release 2>/dev/null && echo "${VERSION_CODENAME:-$VERSION}")
+        sudo curl -fsSL "https://download.docker.com/linux/${DISTRO_ID}/gpg" -o /etc/apt/keyrings/docker.asc
+        sudo chmod a+r /etc/apt/keyrings/docker.asc
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/${DISTRO_ID} ${DISTRO_CODENAME} stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+        sudo apt-get update
+        sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    elif command -v yum &> /dev/null; then
+        sudo yum install -y yum-utils
+        sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+        sudo yum install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    elif command -v dnf &> /dev/null; then
+        sudo dnf -y install dnf-plugins-core
+        sudo dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo
+        sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    else
+        print_error "Could not detect supported package manager (apt/yum/dnf). Please install Docker and Docker Compose manually."
+        exit 1
+    fi
+
+    sudo systemctl enable --now docker 2>/dev/null || true
+    if ! docker compose version &> /dev/null; then
+        print_error "Docker Compose plugin failed to install. Please install it manually."
+        exit 1
+    fi
+    print_success "Docker and Docker Compose installed."
+}
+
+# Setup mwc-proxy with Docker in ~/mwc-proxy-docker
+setup_docker_proxy() {
+    local MWC_PROXY_DIR="${HOME}/mwc-proxy-docker"
+    print_step "Setting up Minecraft Web Client proxy (Docker) in $MWC_PROXY_DIR..."
+
+    ensure_docker_installed
+
+    mkdir -p "$MWC_PROXY_DIR"
+    mkdir -p "$MWC_PROXY_DIR/logs"
+
+    # Signal server: ask if user wants to appear on network.mcraft.fun
+    echo
+    read -p "Enable signal server reporting so your server appears on network.mcraft.fun listing? (recommended) [Y/n]: " signal_choice
+    signal_choice=${signal_choice:-Y}
+
+    local SIGNAL_ENV=""
+    if [[ $signal_choice =~ ^[Yy]$ ]]; then
+        read -p "Enter the domain on which the proxy will be reachable (port 2344 proxied) [e.g. proxy.example.com]: " SIGNAL_DOMAIN
+        if [[ -n "$SIGNAL_DOMAIN" ]]; then
+            SIGNAL_ENV="SIGNAL_DOMAIN: \"$SIGNAL_DOMAIN\""
+        fi
+    else
+        SIGNAL_ENV="DISABLE_SIGNAL: \"1\""
+    fi
+
+    echo
+    read -p "Enable automatic image updates (watchtower)? [Y/n]: " watchtower_choice
+    watchtower_choice=${watchtower_choice:-Y}
+    local ENABLE_WATCHTOWER=false
+    [[ $watchtower_choice =~ ^[Yy]$ ]] && ENABLE_WATCHTOWER=true
+
+    # Build docker-compose.yml
+    local COMPOSE_FILE="$MWC_PROXY_DIR/docker-compose.yml"
+    {
+        echo 'services:'
+        echo '  mwc-proxy:'
+        echo '    image: ghcr.io/zardoy/mwc-proxy:latest'
+        echo '    init: true'
+        echo '    read_only: true'
+        echo '    restart: unless-stopped'
+        echo '    container_name: mwc-proxy'
+        echo ''
+        echo '    ports:'
+        echo '      - 2344:2344/tcp'
+        echo ''
+        echo '    environment:'
+        echo '      PORT: "2344"'
+        if [[ -n "$SIGNAL_ENV" ]]; then
+            echo "      $SIGNAL_ENV"
+        fi
+        echo ''
+        echo '    volumes:'
+        echo '      - ./logs:/usr/src/app/dist/logs'
+        echo ''
+        echo '    labels:'
+        echo '      - com.centurylinklabs.watchtower.scope=mwc-proxy'
+        echo ''
+        if [[ "$ENABLE_WATCHTOWER" == true ]]; then
+            echo '  watchtower:'
+            echo '    image: ghcr.io/containrrr/watchtower'
+            echo '    restart: unless-stopped'
+            echo '    command: --cleanup --scope mwc-proxy --interval 900 --include-restarting'
+            echo '    volumes:'
+            echo '      - /var/run/docker.sock:/var/run/docker.sock'
+        fi
+    } > "$COMPOSE_FILE"
+
+    print_info "Starting containers..."
+    (cd "$MWC_PROXY_DIR" && sudo docker compose up -d)
+
+    print_success "mwc-proxy is running in $MWC_PROXY_DIR"
+    print_info "Proxy port: 2344 (TCP)"
+    print_info "Logs: $MWC_PROXY_DIR/logs"
+    print_info "Manage: cd $MWC_PROXY_DIR && docker compose up -d / down / logs -f"
+}
+
+# Open URL in default browser (or print)
+open_url() {
+    local url="$1"
+    if command -v xdg-open &> /dev/null; then
+        xdg-open "$url" 2>/dev/null || true
+    elif command -v open &> /dev/null; then
+        open "$url" 2>/dev/null || true
+    fi
+    print_info "Manual setup guide: $url"
 }
 
 # Get latest release info
@@ -542,10 +663,10 @@ share_proxy() {
             PROXY_URL="http://localhost:${PORT}"
         fi
 
-        # Make request to share the proxy
+        # Make request to share the proxy (do not fail script on request failure)
         SHARE_RESPONSE=$(curl -s -w "%{http_code}" -X POST "https://proxy.mcraft.fun/share-proxy" \
             -H "Content-Type: application/json" \
-            -d "{\"url\":\"${PROXY_URL}\"}" 2>/dev/null)
+            -d "{\"url\":\"${PROXY_URL}\"}" 2>/dev/null) || SHARE_RESPONSE="000"
 
         HTTP_CODE="${SHARE_RESPONSE: -3}"
 
@@ -652,35 +773,23 @@ main() {
         choice=${choice:-1}
         case $choice in
             1)
-                print_success "Selected: Minecraft Web Client"
-                break
-                ;;
-            2|3)
-                print_warning "This option is coming soon!"
-                ;;
-            *)
-                print_error "Invalid option. Please select 1."
-                ;;
-        esac
-    done
-
-    echo
-
-    # Deployment method menu
-    show_deployment_menu
-    while true; do
-        read -p "Select deployment method [1]: " deploy_choice
-        deploy_choice=${deploy_choice:-1}
-        case $deploy_choice in
-            1)
-                print_success "Selected: Deploy Outside Docker"
-                break
+                print_success "Selected: Minecraft Web Client (only proxy using Docker)"
+                setup_docker_proxy
+                echo
+                print_success "🎉 Docker proxy setup completed! 🎮 Happy Gaming! ⛏️"
+                exit 0
                 ;;
             2)
-                print_warning "Docker deployment is coming soon!"
+                print_success "Selected: Minecraft Web Client + proxy (outside Docker)"
+                break
+                ;;
+            3)
+                print_success "Selected: Minecraft Websocket Proxy (manual setup)"
+                open_url "https://github.com/zardoy/mwc-proxy/blob/main/bun/ws-proxy.ts"
+                exit 0
                 ;;
             *)
-                print_error "Invalid option. Please select 1."
+                print_error "Invalid option. Please select 1, 2, or 3."
                 ;;
         esac
     done
